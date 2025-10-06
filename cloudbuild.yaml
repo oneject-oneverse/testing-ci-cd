@@ -2,6 +2,9 @@ substitutions:
   _ARTIFACT_REPO: "asia-southeast1-docker.pkg.dev/$PROJECT_ID/github2cloudrun-nextjs"
   _IMAGE_NAME: "${_ARTIFACT_REPO}/testing-ci-cd"
 
+options:
+  logging: "CLOUD_LOGGING_ONLY"
+
 steps:
   # 1) install dependencies & run tests
   - name: "node:18"
