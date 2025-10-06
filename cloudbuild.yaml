@@ -1,0 +1,70 @@
+substitutions:
+  _ARTIFACT_REPO: "asia-southeast1-docker.pkg.dev/$PROJECT_ID/github2cloudrun-nextjs"
+  _IMAGE_NAME: "${_ARTIFACT_REPO}/testing-ci-cd"
+
+steps:
+  # 1) install dependencies & run tests
+  - name: "node:18"
+    id: "install-and-test"
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        npm ci
+        npm test || (echo "Tests failed" && exit 1)
+        npm run build
+
+  # 2) build & push image (kaniko)
+  - name: "gcr.io/kaniko-project/executor:latest"
+    id: "build-and-push"
+    args:
+      - --dockerfile=Dockerfile
+      - --context=dir://.
+      - --destination=${_IMAGE_NAME}:${SHORT_SHA}
+      - --destination=${_IMAGE_NAME}:latest
+    env:
+      - "DOCKER_CONFIG=/kaniko/.docker/"
+
+  # 3) generate SBOM (syft) — fallback ke directory jika scan image gagal
+  - name: "anchore/syft:latest"
+    id: "generate-sbom"
+    entrypoint: /bin/sh
+    args:
+      - -c
+      - |
+        syft ${_IMAGE_NAME}:${SHORT_SHA} -o cyclonedx-json > sbom.cdx.json || syft dir:. -o cyclonedx-json > sbom.cdx.json
+    waitFor: ["build-and-push"]
+
+  # 4) scan image (trivy) — fail build on HIGH/CRITICAL
+  - name: "aquasec/trivy:latest"
+    id: "trivy-scan"
+    entrypoint: /bin/sh
+    args:
+      - -c
+      - |
+        trivy image --severity CRITICAL,HIGH --exit-code 1 ${_IMAGE_NAME}:${SHORT_SHA} || { echo "Vulnerabilities found"; exit 1; }
+    waitFor: ["build-and-push", "generate-sbom"]
+
+  # 5) deploy to Cloud Run only if branch = main|master
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: "deploy-to-cloud-run"
+    entrypoint: /bin/bash
+    args:
+      - -c
+      - |
+        if [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "master" ]]; then
+          IMAGE=${_IMAGE_NAME}:${SHORT_SHA}
+          gcloud run deploy testing-ci-cd \
+            --image=$IMAGE \
+            --platform=managed \
+            --region=asia-southeast1 \
+            --allow-unauthenticated \
+            --quiet
+        else
+          echo "Not main/master branch ($BRANCH_NAME) - skipping deploy"
+        fi
+
+artifacts:
+  objects:
+    location: "gs://$PROJECT_ID-cloudbuild-artifacts/sbom/${SHORT_SHA}/"
+    paths: ["sbom.cdx.json"]
