@@ -16,4 +16,4 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./
 EXPOSE 8080
-CMD ["npx", "next", "start", "-p", "8080"]
+CMD ["npm", "start"]
