@@ -6,8 +6,6 @@ substitutions:
   _LOGS_BUCKET: "gs://cloud-build-logs-oneject-service-asia-southeast1"
 
 options:
-  # wajib kalau org policy minta user-owned logs bucket
-  logsBucket: ${_LOGS_BUCKET}
   # tetap simpan juga di Cloud Logging (opsional)
   logging: "CLOUD_LOGGING_ONLY"
 
