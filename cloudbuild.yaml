@@ -1,16 +1,18 @@
-# cloudbuild.yaml — modified to include user-owned logs bucket
+# cloudbuild.yaml — fixed for REGIONAL_USER_OWNED_BUCKET handling
 substitutions:
   _ARTIFACT_REPO: "asia-southeast1-docker.pkg.dev/$PROJECT_ID/github2cloudrun-nextjs"
   _IMAGE_NAME: "${_ARTIFACT_REPO}/testing-ci-cd"
-  # GANTI nilai ini dengan bucket logs yang lo buat (contoh: gs://cloud-build-logs-myproject-asia-southeast1)
-  _LOGS_BUCKET: "gs://cloud-build-logs-oneject-service-asia-southeast1"
+  _LOGS_BUCKET: "gs://cloud-build-logs-oneject-service-asia-southeast1" # buat referensi, tidak dipakai langsung here
+  _REGION: "asia-southeast1"
+  _SERVICE: "testing-ci-cd"
 
 options:
-  # tetap simpan juga di Cloud Logging (opsional)
+  # gunakan behavior yang didukung agar sesuai org policy user-owned logs
+  defaultLogsBucketBehavior: "REGIONAL_USER_OWNED_BUCKET"
   logging: "CLOUD_LOGGING_ONLY"
+  machineType: E2_SMALL
 
 steps:
-  # 1) install dependencies & run tests
   - name: "node:18"
     id: "install-and-test"
     entrypoint: bash
@@ -21,7 +23,6 @@ steps:
         npm test || (echo "Tests failed" && exit 1)
         npm run build
 
-  # 2) build & push image (kaniko)
   - name: "gcr.io/kaniko-project/executor:latest"
     id: "build-and-push"
     args:
@@ -32,7 +33,6 @@ steps:
     env:
       - "DOCKER_CONFIG=/kaniko/.docker/"
 
-  # 3) generate SBOM (syft) — fallback ke directory jika scan image gagal
   - name: "anchore/syft:latest"
     id: "generate-sbom"
     entrypoint: /bin/sh
@@ -42,7 +42,6 @@ steps:
         syft ${_IMAGE_NAME}:${SHORT_SHA} -o cyclonedx-json > sbom.cdx.json || syft dir:. -o cyclonedx-json > sbom.cdx.json
     waitFor: ["build-and-push"]
 
-  # 4) scan image (trivy) — fail build on HIGH/CRITICAL
   - name: "aquasec/trivy:latest"
     id: "trivy-scan"
     entrypoint: /bin/sh
@@ -52,7 +51,6 @@ steps:
         trivy image --severity CRITICAL,HIGH --exit-code 1 ${_IMAGE_NAME}:${SHORT_SHA} || { echo "Vulnerabilities found"; exit 1; }
     waitFor: ["build-and-push", "generate-sbom"]
 
-  # 5) deploy to Cloud Run only if branch = main|master
   - name: "gcr.io/cloud-builders/gcloud"
     id: "deploy-to-cloud-run"
     entrypoint: /bin/bash
@@ -61,10 +59,10 @@ steps:
       - |
         if [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "master" ]]; then
           IMAGE=${_IMAGE_NAME}:${SHORT_SHA}
-          gcloud run deploy testing-ci-cd \
+          gcloud run deploy ${_SERVICE} \
             --image=$IMAGE \
             --platform=managed \
-            --region=asia-southeast1 \
+            --region=${_REGION} \
             --allow-unauthenticated \
             --quiet
         else
