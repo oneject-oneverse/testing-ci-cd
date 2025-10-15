@@ -1,8 +1,14 @@
+# cloudbuild.yaml — modified to include user-owned logs bucket
 substitutions:
   _ARTIFACT_REPO: "asia-southeast1-docker.pkg.dev/$PROJECT_ID/github2cloudrun-nextjs"
   _IMAGE_NAME: "${_ARTIFACT_REPO}/testing-ci-cd"
+  # GANTI nilai ini dengan bucket logs yang lo buat (contoh: gs://cloud-build-logs-myproject-asia-southeast1)
+  _LOGS_BUCKET: "gs://cloud-build-logs-oneject-service-asia-southeast1"
 
 options:
+  # wajib kalau org policy minta user-owned logs bucket
+  logsBucket: ${_LOGS_BUCKET}
+  # tetap simpan juga di Cloud Logging (opsional)
   logging: "CLOUD_LOGGING_ONLY"
 
 steps:
