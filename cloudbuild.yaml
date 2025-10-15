@@ -10,7 +10,6 @@ options:
   # gunakan behavior yang didukung agar sesuai org policy user-owned logs
   defaultLogsBucketBehavior: "REGIONAL_USER_OWNED_BUCKET"
   logging: "CLOUD_LOGGING_ONLY"
-  machineType: E2_SMALL
 
 steps:
   - name: "node:18"
